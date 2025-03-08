@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Distancias</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h2>Calculadora de Distancias entre Puntos</h2>
+    <p>Instrucciones: Haz clic en el mapa para colocar el primer punto (rojo) como referencia. Luego añade más puntos para calcular las distancias.</p>
+    <div id="map"></div>
+    <button id="clearMarkers">Limpiar Todos los Puntos</button>
+    <div id="results-container">
+        <ul id="distances"></ul>
+    </div>
+
+    <script src="script.js"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBhqm0DRcgzWdHGbvGpn7nroTC04UYiPLs&libraries=geometry&callback=initMap"></script>
+</body>
+</html>
