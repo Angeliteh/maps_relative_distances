@@ -4,18 +4,175 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calculadora de Distancias</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h2>Calculadora de Distancias entre Puntos</h2>
-    <p>Instrucciones: Haz clic en el mapa para colocar el primer punto (rojo) como referencia. Luego añade más puntos para calcular las distancias.</p>
-    <div id="map"></div>
-    <button id="clearMarkers">Limpiar Todos los Puntos</button>
-    <div id="results-container">
-        <ul id="distances"></ul>
+    <header>
+        <h1>Calculadora de Distancias</h1>
+        <p>Mide distancias entre puntos en el mapa de manera fácil e intuitiva</p>
+    </header>
+
+    <div class="container">
+        <div class="search-container">
+            <div class="search-box reference">
+                <label for="reference-search"><i class="fas fa-map-marker-alt"></i> Punto de Referencia:</label>
+                <input type="text" id="reference-search" placeholder="Buscar ubicación de referencia...">
+                <button id="set-reference" class="primary"><i class="fas fa-plus-circle"></i> Establecer</button>
+            </div>
+            
+            <div class="search-box destination">
+                <label for="destination-search"><i class="fas fa-location-arrow"></i> Añadir Punto:</label>
+                <input type="text" id="destination-search" placeholder="Buscar ubicación para añadir...">
+                <button id="add-destination" class="primary"><i class="fas fa-plus-circle"></i> Añadir</button>
+            </div>
+        </div>
+        
+        <p class="instructions">También puedes hacer clic directamente en el mapa para añadir puntos.</p>
+        
+        <div id="map"></div>
+        
+        <div class="controls">
+            <button id="clearMarkers" class="clear"><i class="fas fa-trash-alt"></i> Limpiar Todos los Puntos</button>
+            <button id="toggleDistanceMatrix" class="secondary"><i class="fas fa-table"></i> Ver Matriz de Distancias</button>
+            <button id="toggleRoutes" class="secondary"><i class="fas fa-road"></i> Ocultar/Mostrar Rutas</button>
+        </div>
+        
+        <div id="results-container">
+            <div class="tabs">
+                <div class="tab active" data-tab="tab-reference"><i class="fas fa-star"></i> Distancias desde Referencia</div>
+                <div class="tab" data-tab="tab-matrix"><i class="fas fa-th"></i> Matriz de Distancias</div>
+                <div class="tab" data-tab="tab-help"><i class="fas fa-question-circle"></i> Ayuda</div>
+            </div>
+            
+            <div id="tab-reference" class="tab-content active">
+                <div class="sortable-hint">
+                    <i class="fas fa-grip-vertical"></i> Puedes reordenar los puntos arrastrándolos desde las barras verticales
+                </div>
+                <ul id="distances" class="sortable-list"></ul>
+            </div>
+            
+            <div id="tab-matrix" class="tab-content">
+                <p>Haz clic en "Ver Matriz de Distancias" para calcular las distancias entre todos los puntos.</p>
+                <div id="distance-matrix-container"></div>
+            </div>
+            
+            <div id="tab-help" class="tab-content">
+                <h3><i class="fas fa-info-circle"></i> Solución de problemas con la API de Google Maps</h3>
+                
+                <div class="help-section">
+                    <h4>Guía paso a paso para obtener una clave de API de Google Maps</h4>
+                    <ol>
+                        <li>
+                            <strong>Accede a Google Cloud Console:</strong>
+                            <ul>
+                                <li>Ve a <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a></li>
+                                <li>Inicia sesión con tu cuenta de Google</li>
+                                <li>Si es tu primera vez, acepta los términos de servicio</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Crea un nuevo proyecto:</strong>
+                            <ul>
+                                <li>En la barra superior, haz clic en el selector de proyectos</li>
+                                <li>Selecciona "Nuevo proyecto"</li>
+                                <li>Dale un nombre como "Calculadora de Distancias"</li>
+                                <li>Haz clic en "Crear"</li>
+                            </ul>
+                            <div class="help-image-hint">Busca un botón similar a: <span class="ui-element">Nombre del proyecto ▼</span> en la parte superior</div>
+                        </li>
+                        <li>
+                            <strong>Habilita las APIs necesarias:</strong>
+                            <ul>
+                                <li>En el menú lateral, busca "APIs y servicios" > "Biblioteca"</li>
+                                <li>Busca y habilita estas cuatro APIs (una por una):</li>
+                                <li class="api-item">Maps JavaScript API</li>
+                                <li class="api-item">Places API</li>
+                                <li class="api-item">Routes API (anteriormente conocida como Directions API)</li>
+                                <li class="api-item">Distance Matrix API (puede estar dentro de Routes API)</li>
+                                <li>Para cada una, haz clic en el botón "Habilitar"</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Crea una clave de API:</strong>
+                            <ul>
+                                <li>En el menú lateral, ve a "APIs y servicios" > "Credenciales"</li>
+                                <li>Haz clic en "Crear credenciales" > "Clave de API"</li>
+                                <li>Se generará una nueva clave. Cópiala (la necesitarás para tu aplicación)</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Configura restricciones (opcional pero recomendado):</strong>
+                            <ul>
+                                <li>En la lista de claves de API, busca la que acabas de crear y haz clic en "Editar"</li>
+                                <li>En "Restricciones de aplicación", selecciona "Sitios web HTTP referidos"</li>
+                                <li>Para desarrollo local, añade: <code>http://localhost</code></li>
+                                <li>En "Restricciones de API", selecciona "Restringir clave"</li>
+                                <li>Marca solo las cuatro APIs que habilitaste anteriormente</li>
+                                <li>Haz clic en "Guardar"</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Configura la facturación (posiblemente necesario):</strong>
+                            <ul>
+                                <li>Google Maps Platform requiere una cuenta de facturación</li>
+                                <li>Ofrece $200 USD mensuales gratis (suficiente para uso personal)</li>
+                                <li>Si te lo pide, sigue los pasos para añadir un método de pago</li>
+                                <li>Puedes establecer alertas de presupuesto para evitar cargos inesperados</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Actualiza tu código:</strong>
+                            <ul>
+                                <li>Reemplaza <code>TU_CLAVE_DE_API_AQUI</code> en el script al final de este archivo</li>
+                                <li>Guarda los cambios y recarga la página</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+                
+                <div class="help-section">
+                    <h4>Uso de coordenadas manuales (alternativa si la API no funciona):</h4>
+                    <p>Si la API de Places no funciona, puedes ingresar coordenadas manualmente en formato: <strong>latitud, longitud</strong></p>
+                    <p>Ejemplos:</p>
+                    <ul class="coordinates-examples">
+                        <li><code>19.4326, -99.1332</code> - Ciudad de México</li>
+                        <li><code>40.7128, -74.0060</code> - Nueva York</li>
+                        <li><code>48.8566, 2.3522</code> - París</li>
+                        <li><code>-34.6037, -58.3816</code> - Buenos Aires</li>
+                    </ul>
+                    <p>Puedes encontrar coordenadas de cualquier lugar en <a href="https://www.latlong.net/" target="_blank">latlong.net</a></p>
+                </div>
+                
+                <div class="help-section">
+                    <h4>¿Sigues teniendo problemas?</h4>
+                    <p>Si después de seguir estos pasos sigues viendo el error, prueba estas soluciones:</p>
+                    <ul>
+                        <li>Asegúrate de que no hay errores de escritura en la clave de API</li>
+                        <li>Verifica que las APIs estén correctamente habilitadas</li>
+                        <li>Espera unos minutos después de crear la clave (a veces tarda en activarse)</li>
+                        <li>Borra la caché del navegador y vuelve a cargar la página</li>
+                        <li>Prueba en otro navegador</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <script src="script.js"></script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBhqm0DRcgzWdHGbvGpn7nroTC04UYiPLs&libraries=geometry&callback=initMap"></script>
+    <!-- Script para detectar errores de carga de la API -->
+    <script>
+        window.gm_authFailure = function() {
+            alert('Error de autenticación con Google Maps API. Por favor, verifica tu clave de API y sus restricciones.');
+            document.getElementById('map').innerHTML = '<div class="api-error"><i class="fas fa-exclamation-triangle"></i><h3>Error de autenticación de Google Maps</h3><p>Hubo un problema con la clave de API. Revisa la pestaña de Ayuda para más información.</p></div>';
+        };
+    </script>
+    <!-- 
+    IMPORTANTE: Esta aplicación utiliza la clave de API de Google Maps proporcionada
+    Si necesitas cambiarla en el futuro, reemplaza el valor después de key=
+    -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?v=quarterly&key=AIzaSyBhqm0DRcgzWdHGbvGpn7nroTC04UYiPLs&libraries=geometry,places&callback=initMap"></script>
 </body>
 </html>
