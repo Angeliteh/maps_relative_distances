@@ -25,8 +25,8 @@ function initMap() {
         // Limpiar el timeout ya que la API se cargó correctamente
         clearTimeout(googleMapsLoadTimeout);
         
-        map = new google.maps.Map(document.getElementById("map"), {
-            center: { lat: 19.4326, lng: -99.1332 }, // CDMX como centro inicial
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 19.4326, lng: -99.1332 }, // CDMX como centro inicial
             zoom: 12,
             styles: [
                 {
@@ -45,23 +45,23 @@ function initMap() {
             return;
         }
 
-        // Inicializar servicios de direcciones
-        directionsService = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({
-            suppressMarkers: true, // No mostrar marcadores adicionales para las rutas
-            preserveViewport: true // No cambiar el zoom al mostrar rutas
-        });
-        directionsRenderer.setMap(map);
+    // Inicializar servicios de direcciones
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        suppressMarkers: true, // No mostrar marcadores adicionales para las rutas
+        preserveViewport: true // No cambiar el zoom al mostrar rutas
+    });
+    directionsRenderer.setMap(map);
 
         // Inicializar autocompletado para búsqueda de lugares
         setupPlacesAutocomplete();
 
-        map.addListener("click", function (event) {
-            addMarker(event.latLng);
-        });
+    map.addListener("click", function (event) {
+        addMarker(event.latLng);
+    });
 
         // Event listeners
-        document.getElementById("clearMarkers").addEventListener("click", clearMarkers);
+    document.getElementById("clearMarkers").addEventListener("click", clearMarkers);
         document.getElementById("toggleRoutes").addEventListener("click", toggleRoutes);
         document.getElementById("toggleDistanceMatrix").addEventListener("click", calculateDistanceMatrix);
         document.getElementById("set-reference").addEventListener("click", setReferenceFromSearch);
@@ -72,9 +72,9 @@ function initMap() {
         
         // Configurar lista reordenable
         setupSortableList();
-
-        // Mostrar mensaje informativo sobre la API
-        console.log("Google Maps API cargada correctamente");
+    
+    // Mostrar mensaje informativo sobre la API
+    console.log("Google Maps API cargada correctamente");
     } catch (error) {
         console.error("Error al inicializar el mapa:", error);
         showApiError("Error al inicializar Google Maps: " + error.message);
