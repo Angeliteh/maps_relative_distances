@@ -524,6 +524,8 @@ function addInfoWindow(marker, title, index) {
 }
 
 function calculateAndDisplayRoute(origin, destination, destinationIndex) {
+    console.log(`Intentando calcular ruta desde ${origin.toString()} hasta ${destination.toString()}`);
+    
     // Crear un nuevo DirectionsRenderer para esta ruta específica
     let renderer = new google.maps.DirectionsRenderer({
         suppressMarkers: true,
@@ -544,13 +546,16 @@ function calculateAndDisplayRoute(origin, destination, destinationIndex) {
             travelMode: google.maps.TravelMode.DRIVING
         },
         function(response, status) {
+            console.log(`Respuesta de DirectionsService para punto ${destinationIndex}:`, status);
             if (status === "OK") {
                 renderer.setDirections(response);
+                console.log(`Ruta calculada exitosamente para punto ${destinationIndex}`);
                 
                 // Añadir etiqueta con la distancia en la ruta
                 const route = response.routes[0];
                 const distance = route.legs[0].distance.text;
                 const duration = route.legs[0].duration.text;
+                console.log(`Distancia: ${distance}, Duración: ${duration}`);
                 
                 // Encontrar un punto medio aproximado en la ruta para colocar la etiqueta
                 const path = route.overview_path;
@@ -703,14 +708,17 @@ function updateDistances() {
 }
 
 function useDistanceMatrixService() {
+    console.log('Iniciando cálculo de matriz de distancias');
     // Usar el servicio de distancias de Google Maps
     const service = new google.maps.DistanceMatrixService();
     
     // Obtener la posición del punto de referencia
     const origin = markers[0].getPosition();
+    console.log('Punto de referencia:', origin.toString());
     
     // Obtener las posiciones de los demás puntos
     const destinations = markers.slice(1).map(marker => marker.getPosition());
+    console.log('Destinos:', destinations.map(d => d.toString()));
     
     service.getDistanceMatrix(
         {
@@ -720,7 +728,9 @@ function useDistanceMatrixService() {
             unitSystem: google.maps.UnitSystem.METRIC
         },
         function(response, status) {
+            console.log('Respuesta de DistanceMatrix:', status);
             if (status === "OK" && response) {
+                console.log('Matriz de distancias calculada exitosamente');
                 const results = response.rows[0].elements;
                 
                 results.forEach((result, index) => {
