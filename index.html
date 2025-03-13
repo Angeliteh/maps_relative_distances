@@ -12,6 +12,9 @@
     <header>
         <h1>Calculadora de Distancias</h1>
         <p>Mide distancias entre puntos en el mapa de manera fácil e intuitiva</p>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema">
+            <i class="fas fa-moon"></i>
+        </button>
     </header>
 
     <div class="container">
@@ -48,7 +51,7 @@
             
             <div id="tab-reference" class="tab-content active">
                 <div class="sortable-hint">
-                    <i class="fas fa-grip-vertical"></i> Puedes reordenar los puntos arrastrándolos desde las barras verticales
+                    <i class="fas fa-info-circle"></i> Arrastra los puntos desde <i class="fas fa-grip-vertical"></i> para reordenar o cambiar la prioridad. Los cambios se reflejarán en el mapa.
                 </div>
                 <ul id="distances" class="sortable-list"></ul>
             </div>

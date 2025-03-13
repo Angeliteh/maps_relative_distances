@@ -11,6 +11,73 @@ let autocompleteReference;
 let autocompleteDestination;
 let sortableList;
 
+// Configuración del tema (claro/oscuro)
+document.addEventListener('DOMContentLoaded', function() {
+    initTheme();
+});
+
+function initTheme() {
+    const themeToggle = document.getElementById('theme-toggle');
+    if (!themeToggle) {
+        console.error("No se encontró el botón de cambio de tema");
+        return;
+    }
+    
+    const themeIcon = themeToggle.querySelector('i');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // Comprobar si hay un tema guardado en localStorage
+    const currentTheme = localStorage.getItem('theme');
+    if (currentTheme) {
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        updateThemeIcon(themeIcon, currentTheme);
+        if (map) {
+            updateMapStyle();
+        }
+    } else if (prefersDarkScheme.matches) {
+        // Si el usuario prefiere tema oscuro y no hay preferencia guardada
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateThemeIcon(themeIcon, 'dark');
+        localStorage.setItem('theme', 'dark');
+        if (map) {
+            updateMapStyle();
+        }
+    }
+    
+    // Evento para cambiar el tema
+    themeToggle.addEventListener('click', () => {
+        let theme = 'light';
+        
+        if (document.documentElement.getAttribute('data-theme') !== 'dark') {
+            theme = 'dark';
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        
+        localStorage.setItem('theme', theme);
+        updateThemeIcon(themeIcon, theme);
+        
+        // Actualizar estilo del mapa si ya está inicializado
+        if (map) {
+            updateMapStyle();
+        }
+    });
+}
+
+// Actualizar el icono según el tema
+function updateThemeIcon(iconElement, theme) {
+    if (!iconElement) return;
+    
+    if (theme === 'dark') {
+        iconElement.classList.remove('fa-moon');
+        iconElement.classList.add('fa-sun');
+    } else {
+        iconElement.classList.remove('fa-sun');
+        iconElement.classList.add('fa-moon');
+    }
+}
+
 // Timeout para detectar si la API de Google Maps no se carga
 let googleMapsLoadTimeout = setTimeout(function() {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
@@ -25,18 +92,13 @@ function initMap() {
         // Limpiar el timeout ya que la API se cargó correctamente
         clearTimeout(googleMapsLoadTimeout);
         
-    map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 19.4326, lng: -99.1332 }, // CDMX como centro inicial
+        // Determinar el estilo del mapa según el tema actual
+        const mapStyles = getMapStyles();
+        
+        map = new google.maps.Map(document.getElementById("map"), {
+            center: { lat: 19.4326, lng: -99.1332 }, // CDMX como centro inicial
             zoom: 12,
-            styles: [
-                {
-                    "featureType": "poi",
-                    "elementType": "labels",
-                    "stylers": [
-                        { "visibility": "off" }
-                    ]
-                }
-            ]
+            styles: mapStyles
         });
 
         // Verificar si la API se cargó correctamente
@@ -45,23 +107,27 @@ function initMap() {
             return;
         }
 
-    // Inicializar servicios de direcciones
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        suppressMarkers: true, // No mostrar marcadores adicionales para las rutas
-        preserveViewport: true // No cambiar el zoom al mostrar rutas
-    });
-    directionsRenderer.setMap(map);
+        // Inicializar servicios de direcciones - Usar solo si está disponible
+        try {
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                suppressMarkers: true, // No mostrar marcadores adicionales para las rutas
+                preserveViewport: true // No cambiar el zoom al mostrar rutas
+            });
+            directionsRenderer.setMap(map);
+        } catch (error) {
+            console.warn("No se pudo inicializar el servicio de direcciones:", error);
+        }
 
         // Inicializar autocompletado para búsqueda de lugares
         setupPlacesAutocomplete();
 
-    map.addListener("click", function (event) {
-        addMarker(event.latLng);
-    });
+        map.addListener("click", function (event) {
+            addMarker(event.latLng);
+        });
 
         // Event listeners
-    document.getElementById("clearMarkers").addEventListener("click", clearMarkers);
+        document.getElementById("clearMarkers").addEventListener("click", clearAllMarkers);
         document.getElementById("toggleRoutes").addEventListener("click", toggleRoutes);
         document.getElementById("toggleDistanceMatrix").addEventListener("click", calculateDistanceMatrix);
         document.getElementById("set-reference").addEventListener("click", setReferenceFromSearch);
@@ -73,8 +139,8 @@ function initMap() {
         // Configurar lista reordenable
         setupSortableList();
     
-    // Mostrar mensaje informativo sobre la API
-    console.log("Google Maps API cargada correctamente");
+        // Mostrar mensaje informativo sobre la API
+        console.log("Google Maps API cargada correctamente");
     } catch (error) {
         console.error("Error al inicializar el mapa:", error);
         showApiError("Error al inicializar Google Maps: " + error.message);
@@ -128,7 +194,7 @@ function setReferenceManually() {
     
     if (coordinates) {
         // Limpiar todos los marcadores existentes
-        clearMarkers();
+        clearAllMarkers();
         
         // Añadir el nuevo punto de referencia
         const location = new google.maps.LatLng(coordinates.lat, coordinates.lng);
@@ -240,7 +306,7 @@ function setReferenceFromSearch() {
     }
     
     // Limpiar todos los marcadores existentes
-    clearMarkers();
+    clearAllMarkers();
     
     // Guardar la dirección en una variable global
     const placeName = place.name || place.formatted_address;
@@ -299,128 +365,396 @@ function addDestinationFromSearch() {
 
 // Nueva función para editar un punto existente
 function editMarker(index) {
-    // Si es el punto de referencia (índice 0)
-    if (index === 0 && window.lastReferenceAddress) {
-        document.getElementById("reference-search").value = window.lastReferenceAddress;
-        document.getElementById("reference-search").focus();
-        // Opcional: Scrollear hacia arriba para ver el campo de entrada
-        window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
+    if (index < 0 || index >= markers.length) {
+        console.error(`Índice de marcador no válido: ${index}`);
         return;
     }
     
-    // Si es un punto de destino
-    if (window.destinationAddresses) {
-        const destinationInfo = window.destinationAddresses.find(dest => dest.index === index);
-        if (destinationInfo) {
-            document.getElementById("destination-search").value = destinationInfo.address;
-            document.getElementById("destination-search").focus();
-            // Opcional: Scrollear hacia arriba para ver el campo de entrada
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-            
-            // Eliminar este punto para que pueda ser reemplazado
-            markers[index].setMap(null);
-            markers.splice(index, 1);
-            
-            // Actualizar el array de direcciones
-            window.destinationAddresses = window.destinationAddresses.filter(dest => dest.index !== index);
-            
-            // Actualizar las rutas
-            updateAllRoutes();
+    // Obtener el marcador a editar
+    const marker = markers[index];
+    
+    // Obtener dirección actual (si existe)
+    let currentAddress = "Sin dirección";
+    if (index === 0 && window.lastReferenceAddress) {
+        currentAddress = window.lastReferenceAddress;
+    } else if (window.destinationAddresses) {
+        const addressInfo = window.destinationAddresses.find(d => d.index === index);
+        if (addressInfo) {
+            currentAddress = addressInfo.address;
         }
     }
+    
+    // Obtener coordenadas actuales
+    const position = marker.getPosition();
+    const lat = position.lat().toFixed(6);
+    const lng = position.lng().toFixed(6);
+    
+    // Crear un modal personalizado para editar el marcador
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    `;
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.cssText = `
+        background-color: var(--container-bg);
+        color: var(--text-color);
+        padding: 25px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        position: relative;
+    `;
+    
+    // Título del modal
+    const title = document.createElement('h3');
+    title.textContent = index === 0 ? 'Editar Punto de Referencia' : `Editar Punto #${index}`;
+    title.style.marginTop = '0';
+    
+    // Detalles de la ubicación actual
+    const currentDetails = document.createElement('div');
+    currentDetails.innerHTML = `
+        <p><strong>Dirección actual:</strong> ${currentAddress}</p>
+        <p><strong>Coordenadas:</strong> ${lat}, ${lng}</p>
+    `;
+    
+    // Campo para la nueva dirección
+    const addressLabel = document.createElement('label');
+    addressLabel.textContent = 'Nueva dirección o coordenadas:';
+    addressLabel.style.display = 'block';
+    addressLabel.style.marginTop = '15px';
+    addressLabel.style.fontWeight = '600';
+    
+    const addressInput = document.createElement('input');
+    addressInput.type = 'text';
+    addressInput.placeholder = 'Ingresa dirección o coordenadas (lat, lng)';
+    addressInput.style.cssText = `
+        width: 100%;
+        padding: 12px;
+        margin: 8px 0 15px;
+        border: 1px solid var(--search-box-border);
+        border-radius: 6px;
+        font-size: 1rem;
+        background-color: var(--search-box-bg);
+        color: var(--text-color);
+    `;
+    addressInput.value = currentAddress;
+    
+    // Botones de acción
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+    `;
+    
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancelar';
+    cancelButton.className = 'secondary';
+    cancelButton.style.cssText = `
+        padding: 10px 20px;
+        background-color: var(--secondary-btn);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+    `;
+    
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Eliminar';
+    deleteButton.className = 'clear';
+    deleteButton.style.cssText = `
+        padding: 10px 20px;
+        background-color: var(--clear-btn);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+    `;
+    
+    const saveButton = document.createElement('button');
+    saveButton.textContent = 'Guardar';
+    saveButton.className = 'primary';
+    saveButton.style.cssText = `
+        padding: 10px 20px;
+        background-color: var(--primary-btn);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+    `;
+    
+    // Agregar los botones al contenedor
+    buttonsContainer.appendChild(cancelButton);
+    if (index !== 0) {
+        // Solo mostrar botón de eliminar para puntos que no sean de referencia
+        buttonsContainer.appendChild(deleteButton);
+    }
+    buttonsContainer.appendChild(saveButton);
+    
+    // Construir el modal
+    modalContent.appendChild(title);
+    modalContent.appendChild(currentDetails);
+    modalContent.appendChild(addressLabel);
+    modalContent.appendChild(addressInput);
+    modalContent.appendChild(buttonsContainer);
+    modalOverlay.appendChild(modalContent);
+    
+    // Agregar el modal al DOM
+    document.body.appendChild(modalOverlay);
+    
+    // Focus en el campo de entrada
+    setTimeout(() => addressInput.focus(), 100);
+    
+    // Eventos de los botones
+    cancelButton.addEventListener('click', () => {
+        document.body.removeChild(modalOverlay);
+    });
+    
+    // Eliminar el punto
+    deleteButton.addEventListener('click', () => {
+        // Confirmar eliminación
+        if (confirm(`¿Estás seguro de que deseas eliminar el punto #${index}?`)) {
+            // Eliminar el marcador del mapa
+            marker.setMap(null);
+            
+            // Eliminar el marcador del array
+            markers.splice(index, 1);
+            
+            // Actualizar las rutas y distancias
+            updateMarkerLabels();
+            updateAllRoutes();
+            updateDistances();
+            
+            // Cerrar el modal
+            document.body.removeChild(modalOverlay);
+        }
+    });
+    
+    // Guardar cambios
+    saveButton.addEventListener('click', () => {
+        const input = addressInput.value.trim();
+        
+        if (input === '') {
+            alert('Por favor ingresa una dirección o coordenadas válidas.');
+            return;
+        }
+        
+        // Verificar si son coordenadas
+        const coordinates = parseCoordinates(input);
+        
+        if (coordinates) {
+            // Actualizar posición del marcador con coordenadas
+            const newPosition = new google.maps.LatLng(coordinates.lat, coordinates.lng);
+            marker.setPosition(newPosition);
+            
+            // Actualizar la dirección almacenada
+            if (index === 0) {
+                window.lastReferenceAddress = `Punto (${coordinates.lat}, ${coordinates.lng})`;
+            } else if (window.destinationAddresses) {
+                const addressInfo = window.destinationAddresses.find(d => d.index === index);
+                if (addressInfo) {
+                    addressInfo.address = `Punto (${coordinates.lat}, ${coordinates.lng})`;
+                }
+            }
+            
+            // Actualizar rutas y distancias
+            updateAllRoutes();
+            updateDistances();
+            
+            // Cerrar el modal
+            document.body.removeChild(modalOverlay);
+        } else {
+            // Intentar geocodificar la dirección
+            if (typeof google.maps.Geocoder === 'undefined') {
+                alert('No se puede geocodificar la dirección. Intenta con coordenadas (lat, lng).');
+                return;
+            }
+            
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ address: input }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    const location = results[0].geometry.location;
+                    
+                    // Actualizar posición del marcador
+                    marker.setPosition(location);
+                    
+                    // Actualizar la dirección almacenada
+                    const formattedAddress = results[0].formatted_address;
+                    if (index === 0) {
+                        window.lastReferenceAddress = formattedAddress;
+                    } else if (window.destinationAddresses) {
+                        const addressInfo = window.destinationAddresses.find(d => d.index === index);
+                        if (addressInfo) {
+                            addressInfo.address = formattedAddress;
+                        }
+                    }
+                    
+                    // Actualizar rutas y distancias
+                    updateAllRoutes();
+                    updateDistances();
+                    
+                    // Cerrar el modal
+                    document.body.removeChild(modalOverlay);
+                } else {
+                    alert('No se pudo encontrar la dirección. Intenta con otro formato o usa coordenadas (lat, lng).');
+                }
+            });
+        }
+    });
 }
 
 function setupSortableList() {
-    // Esperamos un poco para asegurarnos de que la lista esté creada
+    // Esperar a que exista la lista ordenable
     setTimeout(() => {
-        const distancesEl = document.getElementById("distances");
-        if (!distancesEl) return;
+        const distancesEl = document.getElementById('distances');
+        if (!distancesEl) {
+            console.error("No se encontró el elemento de la lista de distancias");
+            return;
+        }
         
-        sortableList = new Sortable(distancesEl, {
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
-            handle: '.drag-handle', // Solo permitir arrastrar desde el manejador
-            filter: '.reference-header', // No permitir arrastrar el encabezado de referencia
-            onStart: function() {
-                console.log('Iniciando arrastre');
-            },
-            onEnd: function(evt) {
-                console.log('Terminando arrastre', evt.oldIndex, evt.newIndex);
-                // Reordenar los marcadores (excepto el de referencia)
-                if (markers.length > 1) {
+        try {
+            if (sortableList) {
+                sortableList.destroy();
+            }
+            
+            sortableList = new Sortable(distancesEl, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
+                handle: '.drag-handle',
+                filter: '.reference-header', // No permitir arrastrar el encabezado de referencia
+                onStart: function() {
+                    console.log('Iniciando arrastre');
+                },
+                onEnd: function(evt) {
+                    console.log('Terminando arrastre', evt.oldIndex, evt.newIndex);
+                    
+                    // Si los índices son iguales, no hay cambio
+                    if (evt.oldIndex === evt.newIndex) {
+                        return;
+                    }
+                    
                     // Ajustar índices si tenemos un encabezado de referencia
                     let hasReferenceHeader = document.querySelector('.reference-header') !== null;
                     let oldIndex = evt.oldIndex;
                     let newIndex = evt.newIndex;
                     
                     if (hasReferenceHeader) {
-                        // Si hay un encabezado, ajustamos los índices
-                        oldIndex = oldIndex - 1; // -1 para saltarnos el encabezado
+                        oldIndex = oldIndex - 1;
                         newIndex = newIndex - 1;
                     }
                     
-                    if (oldIndex >= 0 && newIndex >= 0) {
-                        // Ajustar índices para tener en cuenta que el primer marcador es la referencia
-                        const adjustedOldIndex = oldIndex + 1; // +1 porque el índice 0 es la referencia
-                        const adjustedNewIndex = newIndex + 1;
-                        
-                        console.log(`Reordenando marcador de ${adjustedOldIndex} a ${adjustedNewIndex}`);
+                    // Verificar que los índices son válidos
+                    if (oldIndex >= 0 && newIndex >= 0 && oldIndex < markers.length - 1 && newIndex < markers.length - 1) {
+                        // Ajustar índices para el array de marcadores (sumamos 1 porque el índice 0 es la referencia)
+                        const markerOldIndex = oldIndex + 1;
+                        const markerNewIndex = newIndex + 1;
                         
                         // Mover el marcador en el array
-                        const movedMarker = markers.splice(adjustedOldIndex, 1)[0];
-                        markers.splice(adjustedNewIndex, 0, movedMarker);
+                        const movedMarker = markers.splice(markerOldIndex, 1)[0];
+                        markers.splice(markerNewIndex, 0, movedMarker);
                         
-                        // Actualizar el índice en los datos almacenados
-                        if (window.destinationAddresses) {
-                            const movedDestination = window.destinationAddresses.find(d => d.index === adjustedOldIndex);
-                            if (movedDestination) {
-                                movedDestination.index = adjustedNewIndex;
+                        // Actualizar etiquetas visuales
+                        markers.forEach((marker, idx) => {
+                            if (idx > 0) { // Saltar el marcador de referencia
+                                marker.setLabel({
+                                    text: idx.toString(),
+                                    color: "#FFFFFF",
+                                    fontWeight: "bold"
+                                });
                             }
-                        }
+                        });
                         
                         // Actualizar rutas
                         updateAllRoutes();
+                        
+                        // Actualizar la lista de distancias
+                        updateDistances();
+                        
+                        // Actualizar los datos almacenados de direcciones
+                        if (window.destinationAddresses) {
+                            const movedAddress = window.destinationAddresses.find(d => d.index === markerOldIndex);
+                            if (movedAddress) {
+                                window.destinationAddresses = window.destinationAddresses.filter(d => d.index !== markerOldIndex);
+                                movedAddress.index = markerNewIndex;
+                                window.destinationAddresses.push(movedAddress);
+                                window.destinationAddresses.sort((a, b) => a.index - b.index);
+                            }
+                        }
                     }
                 }
-            }
-        });
-        
-        console.log('Sortable inicializado');
+            });
+            
+            console.log('Sortable inicializado correctamente');
+        } catch (error) {
+            console.error("Error al inicializar Sortable:", error);
+        }
     }, 500);
+}
+
+// Actualizar las etiquetas de los marcadores después de reordenarlos
+function updateMarkerLabels() {
+    // Saltar el primer marcador que es la referencia
+    for (let i = 1; i < markers.length; i++) {
+        const marker = markers[i];
+        // Actualizar la etiqueta visible en el mapa
+        if (marker.label) {
+            marker.setLabel({
+                text: i.toString(),
+                color: marker.label.color,
+                fontWeight: marker.label.fontWeight
+            });
+        }
+    }
 }
 
 function updateAllRoutes() {
     // Limpiar todas las rutas existentes
-    activeRoutes.forEach(route => {
-        if (route instanceof google.maps.DirectionsRenderer) {
-            route.setMap(null);
-        } else if (route instanceof google.maps.Polyline) {
-            route.setMap(null);
-        } else if (route instanceof google.maps.Marker) {
-            // Si es un marcador de distancia
-            route.setMap(null);
-        }
-    });
-    activeRoutes = [];
-    
-    // Recalcular todas las rutas desde el punto de referencia
-    if (markers.length > 1) {
-        const origin = markers[0].getPosition();
-        
-        for (let i = 1; i < markers.length; i++) {
-            calculateAndDisplayRoute(origin, markers[i].getPosition(), i);
-        }
+    if (activeRoutes && activeRoutes.length > 0) {
+        activeRoutes.forEach(renderer => {
+            if (renderer instanceof google.maps.DirectionsRenderer) {
+                renderer.setMap(null);
+            } else if (renderer instanceof google.maps.Polyline) {
+                renderer.setMap(null);
+            }
+        });
+        activeRoutes = [];
     }
     
-    // Actualizar la lista de distancias
-    updateDistances();
+    // Si no hay suficientes marcadores, no hay nada que hacer
+    if (markers.length < 2) return;
+    
+    // Referencia es siempre el primer marcador
+    const origin = markers[0].getPosition();
+    
+    // Recalcular todas las rutas desde la referencia
+    for (let i = 1; i < markers.length; i++) {
+        const destination = markers[i].getPosition();
+        
+        if (routesVisible) {
+            calculateAndDisplayRoute(origin, destination, i);
+        } else {
+            // Si las rutas están ocultas, calculamos sólo las distancias en línea recta
+            calculateStraightLineDistance(origin, destination, i);
+        }
+    }
 }
 
 function setupTabs() {
@@ -526,67 +860,93 @@ function addInfoWindow(marker, title, index) {
 function calculateAndDisplayRoute(origin, destination, destinationIndex) {
     console.log(`Intentando calcular ruta desde ${origin.toString()} hasta ${destination.toString()}`);
     
-    // Crear un nuevo DirectionsRenderer para esta ruta específica
-    let renderer = new google.maps.DirectionsRenderer({
-        suppressMarkers: true,
-        preserveViewport: true,
-        polylineOptions: {
-            strokeColor: getRandomColor(),
-            strokeWeight: 5,
-            strokeOpacity: 0.8
+    try {
+        // Verificar si el servicio de direcciones está disponible
+        if (!directionsService || typeof directionsService.route !== 'function') {
+            console.warn("El servicio de direcciones no está disponible. Usando cálculo alternativo.");
+            calculateStraightLineDistance(origin, destination, destinationIndex);
+            return;
         }
-    });
-    renderer.setMap(map);
-    activeRoutes.push(renderer);
-    
-    directionsService.route(
-        {
-            origin: origin,
-            destination: destination,
-            travelMode: google.maps.TravelMode.DRIVING
-        },
-        function(response, status) {
-            console.log(`Respuesta de DirectionsService para punto ${destinationIndex}:`, status);
-            if (status === "OK") {
-                renderer.setDirections(response);
-                console.log(`Ruta calculada exitosamente para punto ${destinationIndex}`);
-                
-                // Añadir etiqueta con la distancia en la ruta
-                const route = response.routes[0];
-                const distance = route.legs[0].distance.text;
-                const duration = route.legs[0].duration.text;
-                console.log(`Distancia: ${distance}, Duración: ${duration}`);
-                
-                // Encontrar un punto medio aproximado en la ruta para colocar la etiqueta
-                const path = route.overview_path;
-                const midPoint = path[Math.floor(path.length / 2)];
-                
-                // Crear un marcador personalizado para mostrar la distancia
-                const distanceMarker = new google.maps.Marker({
-                    position: midPoint,
-                    map: map,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 0,
-                    },
-                    label: {
-                        text: distance,
-                        color: "#FFFFFF",
-                        fontWeight: "bold",
-                        fontSize: "12px",
-                        className: "route-distance-label"
-                    }
-                });
-                
-                // Guardar referencia para poder eliminarlo después
-                activeRoutes.push(distanceMarker);
-            } else {
-                console.error("Error al calcular la ruta:", status);
-                // Si hay un error con la API de direcciones, al menos calculamos la distancia en línea recta
-                calculateStraightLineDistance(origin, destination, destinationIndex);
+        
+        // Crear un nuevo DirectionsRenderer para esta ruta específica
+        let renderer = new google.maps.DirectionsRenderer({
+            suppressMarkers: true,
+            preserveViewport: true,
+            polylineOptions: {
+                strokeColor: getRandomColor(),
+                strokeWeight: 5,
+                strokeOpacity: 0.8
             }
+        });
+        renderer.setMap(map);
+        activeRoutes.push(renderer);
+        
+        directionsService.route(
+            {
+                origin: origin,
+                destination: destination,
+                travelMode: google.maps.TravelMode.DRIVING
+            },
+            function(response, status) {
+                console.log(`Respuesta de DirectionsService para punto ${destinationIndex}:`, status);
+                if (status === "OK") {
+                    renderer.setDirections(response);
+                    console.log(`Ruta calculada exitosamente para punto ${destinationIndex}`);
+                    
+                    // Añadir etiqueta con la distancia en la ruta
+                    const route = response.routes[0];
+                    const distance = route.legs[0].distance.text;
+                    const duration = route.legs[0].duration.text;
+                    console.log(`Distancia: ${distance}, Duración: ${duration}`);
+                    
+                    // Encontrar un punto medio aproximado en la ruta para colocar la etiqueta
+                    const path = route.overview_path;
+                    const midPoint = path[Math.floor(path.length / 2)];
+                    
+                    // Crear un marcador personalizado para mostrar la distancia
+                    const distanceMarker = new google.maps.Marker({
+                        position: midPoint,
+                        map: map,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 0,
+                        },
+                        label: {
+                            text: distance,
+                            color: "#FFFFFF",
+                            fontWeight: "bold",
+                            fontSize: "12px",
+                            className: "route-distance-label"
+                        }
+                    });
+                    
+                    // Guardar referencia para poder eliminarlo después
+                    activeRoutes.push(distanceMarker);
+                    
+                    // Actualizar la distancia en la lista
+                    updateDistanceInList(destinationIndex, distance);
+                } else {
+                    console.error("Error al calcular la ruta:", status);
+                    // Si hay un error con la API de direcciones, calculamos la distancia en línea recta
+                    calculateStraightLineDistance(origin, destination, destinationIndex);
+                }
+            }
+        );
+    } catch (error) {
+        console.error("Error al calcular la ruta:", error);
+        calculateStraightLineDistance(origin, destination, destinationIndex);
+    }
+}
+
+// Función para actualizar la distancia en la lista
+function updateDistanceInList(index, distance) {
+    const listItem = document.querySelector(`li[data-index="${index}"]`);
+    if (listItem) {
+        const distanceValue = listItem.querySelector('.distance-value');
+        if (distanceValue) {
+            distanceValue.textContent = distance;
         }
-    );
+    }
 }
 
 // Función para calcular la distancia en línea recta (alternativa si la API falla)
@@ -661,49 +1021,234 @@ function getRandomColor() {
     return color;
 }
 
-function clearMarkers() {
-    // Cerrar todas las ventanas de información
-    infoWindows.forEach(window => window.close());
-    infoWindows = [];
+function clearAllMarkers() {
+    console.log("Iniciando limpieza de todos los marcadores y rutas...");
     
-    // Eliminar todos los marcadores
-    markers.forEach(marker => marker.setMap(null));
-    markers = [];
-    referenceMarker = null;
-    distancesList.innerHTML = "";
-    
-    // Limpiar la matriz de distancias
-    document.getElementById('distance-matrix-container').innerHTML = "";
-    
-    // Limpiar todas las rutas
-    activeRoutes.forEach(renderer => {
-        if (renderer instanceof google.maps.DirectionsRenderer) {
-            renderer.setMap(null);
-        } else if (renderer instanceof google.maps.Polyline) {
-            renderer.setMap(null);
+    try {
+        // Cerrar todas las ventanas de información
+        if (infoWindows && infoWindows.length > 0) {
+            infoWindows.forEach(window => {
+                if (window && typeof window.close === 'function') {
+                    window.close();
+                }
+            });
+            infoWindows = [];
         }
-    });
-    activeRoutes = [];
-    
-    // Restablecer la pestaña activa
-    document.querySelector('.tab[data-tab="tab-reference"]').click();
+        
+        // Eliminar todos los marcadores
+        if (markers && markers.length > 0) {
+            markers.forEach(marker => {
+                if (marker && typeof marker.setMap === 'function') {
+                    marker.setMap(null);
+                }
+            });
+            markers = [];
+        }
+        
+        // Resetear el marcador de referencia
+        referenceMarker = null;
+        
+        // Limpiar la lista de distancias
+        if (distancesList) {
+            distancesList.innerHTML = "";
+        }
+        
+        // Limpiar la matriz de distancias
+        const matrixContainer = document.getElementById('distance-matrix-container');
+        if (matrixContainer) {
+            matrixContainer.innerHTML = "";
+        }
+        
+        // Limpiar todas las rutas y etiquetas de distancia
+        if (activeRoutes && activeRoutes.length > 0) {
+            activeRoutes.forEach(route => {
+                if (route) {
+                    if (route instanceof google.maps.DirectionsRenderer) {
+                        route.setMap(null);
+                    } else if (route instanceof google.maps.Polyline) {
+                        route.setMap(null);
+                    } else if (route instanceof google.maps.Marker) {
+                        route.setMap(null);
+                    }
+                }
+            });
+            activeRoutes = [];
+        }
+        
+        // Limpiar datos almacenados
+        window.destinationAddresses = [];
+        window.lastReferenceAddress = null;
+        
+        // Restablecer la pestaña activa
+        const referenceTab = document.querySelector('.tab[data-tab="tab-reference"]');
+        if (referenceTab) {
+            referenceTab.click();
+        }
+        
+        // Limpiar el mapa de cualquier elemento residual
+        if (directionsRenderer) {
+            directionsRenderer.setMap(null);
+        }
+        
+        console.log("Todos los marcadores y rutas han sido eliminados correctamente");
+    } catch (error) {
+        console.error("Error al limpiar marcadores:", error);
+        alert("Hubo un problema al limpiar los marcadores. Por favor, recarga la página.");
+    }
+}
+
+// Mantener la función original como alias para compatibilidad
+function clearMarkers() {
+    clearAllMarkers();
 }
 
 function updateDistances() {
+    // Verificar si tenemos el elemento de la lista
+    if (!distancesList) {
+        distancesList = document.getElementById("distances");
+        if (!distancesList) {
+            console.error("No se pudo encontrar el elemento de la lista de distancias");
+            return;
+        }
+    }
+    
+    // Limpiar la lista actual
+    distancesList.innerHTML = "";
+    
+    // Verificar si hay suficientes marcadores para calcular distancias
     if (markers.length < 2) {
-        distancesList.innerHTML = "";
         return;
     }
-
-    distancesList.innerHTML = "<h3>Distancias desde el punto de referencia:</h3>";
     
-    try {
-        // Primero intentamos usar el servicio de Distance Matrix
-        useDistanceMatrixService();
-    } catch (error) {
-        // Si hay un error, usamos el cálculo de distancia en línea recta
-        console.error("Error al usar Distance Matrix:", error);
-        calculateStraightLineDistances();
+    // El primer marcador es siempre la referencia
+    const reference = markers[0];
+    const referencePosition = reference.getPosition();
+    
+    // Si tenemos un marcador de referencia, mostrar su información en un encabezado
+    if (window.lastReferenceAddress) {
+        const referenceHeader = document.createElement("div");
+        referenceHeader.className = "reference-header";
+        referenceHeader.innerHTML = `
+            <div class="reference-info">
+                <h3><i class="fas fa-star"></i> Punto de Referencia</h3>
+                <p>${window.lastReferenceAddress}</p>
+            </div>
+            <div class="actions">
+                <button onclick="editMarker(0)" class="edit-btn" title="Editar punto de referencia">
+                    <i class="fas fa-edit"></i> Editar
+                </button>
+                <button onclick="centerOnMarker(0)" title="Centrar mapa en este punto">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+            </div>
+        `;
+        distancesList.appendChild(referenceHeader);
+    }
+    
+    // Añadir cada destino a la lista con su distancia
+    for (let i = 1; i < markers.length; i++) {
+        const destination = markers[i];
+        
+        // Obtener la dirección guardada (si existe)
+        let addressText = `Punto ${i}`;
+        if (window.destinationAddresses) {
+            const addressInfo = window.destinationAddresses.find(dest => dest.index === i);
+            if (addressInfo && addressInfo.address) {
+                addressText = addressInfo.address;
+            }
+        }
+        
+        // Calcular distancia en línea recta como respaldo
+        const destinationPosition = destination.getPosition();
+        const straightLineDistance = google.maps.geometry.spherical.computeDistanceBetween(
+            referencePosition, destinationPosition);
+        
+        // Formatear la distancia en línea recta
+        const distanceTextKm = (straightLineDistance / 1000).toFixed(2) + " km";
+        const distanceTextM = Math.round(straightLineDistance) + " m";
+        
+        // Crear elemento de lista para este destino
+        const listItem = document.createElement("li");
+        listItem.setAttribute("data-index", i);
+        listItem.className = "sortable-item";
+        
+        // Contenido del elemento de lista
+        listItem.innerHTML = `
+            <div class="drag-handle" title="Arrastrar para reordenar">
+                <i class="fas fa-grip-vertical"></i>
+            </div>
+            <div class="distance-info">
+                <strong>${addressText}</strong>
+                <div class="distance-details">
+                    <span class="badge route-distance">
+                        <i class="fas fa-road"></i> <span class="distance-value">${distanceTextKm}</span>
+                    </span>
+                    <span class="badge straight-distance" title="Distancia en línea recta">
+                        <i class="fas fa-ruler"></i> ${distanceTextM}
+                    </span>
+                </div>
+            </div>
+            <div class="actions">
+                <button onclick="editMarker(${i})" class="edit-btn" title="Editar punto">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="centerOnMarker(${i})" title="Centrar mapa en este punto">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+                <button onclick="deleteMarker(${i})" class="clear" title="Eliminar punto">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+        
+        distancesList.appendChild(listItem);
+    }
+    
+    // Reinicializar Sortable después de actualizar la lista
+    if (sortableList) {
+        sortableList.destroy();
+    }
+    setupSortableList();
+}
+
+// Función para eliminar un marcador específico
+function deleteMarker(index) {
+    if (index < 0 || index >= markers.length) {
+        console.error(`Índice de marcador no válido: ${index}`);
+        return;
+    }
+    
+    // Confirmar eliminación
+    if (confirm(`¿Estás seguro de que deseas eliminar el punto #${index}?`)) {
+        // Obtener el marcador a eliminar
+        const marker = markers[index];
+        
+        // Eliminar el marcador del mapa
+        if (marker && typeof marker.setMap === 'function') {
+            marker.setMap(null);
+        }
+        
+        // Eliminar el marcador del array
+        markers.splice(index, 1);
+        
+        // Actualizar los datos almacenados
+        if (window.destinationAddresses) {
+            window.destinationAddresses = window.destinationAddresses.filter(d => d.index !== index);
+            
+            // Actualizar los índices después de la eliminación
+            window.destinationAddresses.forEach((dest, idx) => {
+                dest.index = idx + 1; // +1 porque el índice 0 es la referencia
+            });
+        }
+        
+        // Actualizar las etiquetas de los marcadores
+        updateMarkerLabels();
+        
+        // Actualizar rutas y distancias
+        updateAllRoutes();
+        updateDistances();
+        
+        console.log(`Marcador #${index} eliminado correctamente`);
     }
 }
 
@@ -1000,4 +1545,194 @@ function createStraightLineDistanceMatrix(positions) {
     tableHTML += "</table>";
     
     document.getElementById('distance-matrix-container').innerHTML += tableHTML;
+}
+
+// Obtener estilos del mapa según el tema
+function getMapStyles() {
+    const isDarkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+    
+    if (isDarkTheme) {
+        return [
+            { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+            { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+            {
+                featureType: "administrative.locality",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#d59563" }],
+            },
+            {
+                featureType: "poi",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#d59563" }],
+            },
+            {
+                featureType: "poi.park",
+                elementType: "geometry",
+                stylers: [{ color: "#263c3f" }],
+            },
+            {
+                featureType: "poi.park",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#6b9a76" }],
+            },
+            {
+                featureType: "road",
+                elementType: "geometry",
+                stylers: [{ color: "#38414e" }],
+            },
+            {
+                featureType: "road",
+                elementType: "geometry.stroke",
+                stylers: [{ color: "#212a37" }],
+            },
+            {
+                featureType: "road",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#9ca5b3" }],
+            },
+            {
+                featureType: "road.highway",
+                elementType: "geometry",
+                stylers: [{ color: "#746855" }],
+            },
+            {
+                featureType: "road.highway",
+                elementType: "geometry.stroke",
+                stylers: [{ color: "#1f2835" }],
+            },
+            {
+                featureType: "road.highway",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#f3d19c" }],
+            },
+            {
+                featureType: "transit",
+                elementType: "geometry",
+                stylers: [{ color: "#2f3948" }],
+            },
+            {
+                featureType: "transit.station",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#d59563" }],
+            },
+            {
+                featureType: "water",
+                elementType: "geometry",
+                stylers: [{ color: "#17263c" }],
+            },
+            {
+                featureType: "water",
+                elementType: "labels.text.fill",
+                stylers: [{ color: "#515c6d" }],
+            },
+            {
+                featureType: "water",
+                elementType: "labels.text.stroke",
+                stylers: [{ color: "#17263c" }],
+            },
+            {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }]
+            }
+        ];
+    } else {
+        return [
+            {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }]
+            }
+        ];
+    }
+}
+
+// Actualizar el estilo del mapa cuando cambia el tema
+function updateMapStyle() {
+    const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+    const styles = isDarkMode ? [
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+        {
+            featureType: "administrative.locality",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#d59563" }],
+        },
+        {
+            featureType: "poi",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#d59563" }],
+        },
+        {
+            featureType: "poi.park",
+            elementType: "geometry",
+            stylers: [{ color: "#263c3f" }],
+        },
+        {
+            featureType: "poi.park",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#6b9a76" }],
+        },
+        {
+            featureType: "road",
+            elementType: "geometry",
+            stylers: [{ color: "#38414e" }],
+        },
+        {
+            featureType: "road",
+            elementType: "geometry.stroke",
+            stylers: [{ color: "#212a37" }],
+        },
+        {
+            featureType: "road",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#9ca5b3" }],
+        },
+        {
+            featureType: "road.highway",
+            elementType: "geometry",
+            stylers: [{ color: "#746855" }],
+        },
+        {
+            featureType: "road.highway",
+            elementType: "geometry.stroke",
+            stylers: [{ color: "#1f2835" }],
+        },
+        {
+            featureType: "road.highway",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#f3d19c" }],
+        },
+        {
+            featureType: "transit",
+            elementType: "geometry",
+            stylers: [{ color: "#2f3948" }],
+        },
+        {
+            featureType: "transit.station",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#d59563" }],
+        },
+        {
+            featureType: "water",
+            elementType: "geometry",
+            stylers: [{ color: "#17263c" }],
+        },
+        {
+            featureType: "water",
+            elementType: "labels.text.fill",
+            stylers: [{ color: "#515c6d" }],
+        },
+        {
+            featureType: "water",
+            elementType: "labels.text.stroke",
+            stylers: [{ color: "#17263c" }],
+        },
+    ] : [];
+    
+    if (map) {
+        map.setOptions({ styles: styles });
+    }
 }
